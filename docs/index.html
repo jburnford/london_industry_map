@@ -1,0 +1,447 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>London's 19th Century Industrial Geography</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link rel="stylesheet"
+        href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+        integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+        crossorigin="" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+          integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+          crossorigin=""></script>
+  <style>
+    html, body { margin: 0; height: 100%; font-family: system-ui, sans-serif; }
+    #map { height: 100%; }
+
+    .panel {
+      position: absolute;
+      top: 10px;
+      background: rgba(255,255,255,0.95);
+      padding: 10px 14px;
+      border-radius: 6px;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.2);
+      font-size: 13px;
+      z-index: 500;
+      max-width: 280px;
+    }
+    .panel h1 { margin: 0 0 4px; font-size: 15px; }
+    .panel p  { margin: 4px 0; }
+    .panel a  { color: #0366d6; }
+    .credits {
+      font-size: 11px; color: #444;
+      border-top: 1px solid #ddd; padding-top: 6px; margin-top: 8px;
+    }
+    #info   { left: 10px; }
+    #legend { right: 10px; max-height: 80vh; overflow-y: auto; }
+    #legend .side-label {
+      font-weight: 600; margin: 6px 0 2px;
+      text-transform: uppercase; font-size: 11px; color: #555;
+    }
+    #legend .row { display: flex; align-items: center; margin: 2px 0; }
+    #legend .sw {
+      width: 14px; height: 14px; margin-right: 6px; border: 1px solid #333;
+    }
+
+    /* Side indicators */
+    .time-badge {
+      position: absolute; top: 80px;
+      background: rgba(0,0,0,0.7); color: white;
+      padding: 6px 12px; border-radius: 4px;
+      font-size: 12px; font-weight: 600; letter-spacing: 0.08em;
+      z-index: 400; pointer-events: none;
+    }
+    #badge-left  { left: 14px; }
+    #badge-right { right: 14px; }
+
+    /* Swipe divider */
+    .sbs-divider {
+      position: absolute; top: 0; bottom: 0;
+      width: 4px;
+      background: #222;
+      box-shadow: 0 0 6px rgba(0,0,0,0.45);
+      transform: translateX(-2px);
+      z-index: 410;
+      cursor: ew-resize;
+    }
+    .sbs-divider::before {
+      content: '';
+      position: absolute;
+      top: 50%; left: 50%;
+      transform: translate(-50%, -50%);
+      width: 36px; height: 36px;
+      border-radius: 50%;
+      background: #fff;
+      border: 2px solid #222;
+      box-shadow: 0 1px 6px rgba(0,0,0,0.5);
+    }
+    .sbs-divider::after {
+      content: '⇆';
+      position: absolute;
+      top: 50%; left: 50%;
+      transform: translate(-50%, -50%);
+      font-size: 20px; color: #222; font-weight: bold;
+      pointer-events: none;
+    }
+
+    .leaflet-popup-content { font-size: 13px; line-height: 1.4; }
+    .leaflet-popup-content b { color: #222; }
+  </style>
+</head>
+<body>
+  <div id="map"></div>
+  <div class="panel" id="info">
+    <h1>London's 19th Century Industrial Geography</h1>
+    <p>Drag the handle to compare industry, water, and docks
+       in London <b>c.1865–75</b> vs. <b>c.1893–95</b>.</p>
+    <p style="font-size: 11px; color: #666;">
+      Data: first-series Ordnance Survey (1860s–70s) &amp; 1890s revision.
+      Click any feature for details.
+    </p>
+    <p class="credits">
+      By <a href="https://jimclifford.ca/" target="_blank" rel="noopener"><b>Jim Clifford</b></a>,
+      with help from Steven Langlois and Anne Riitta Janhunen.<br>
+      Data archive:
+      <!-- TODO: replace the href below with the specific Zenodo record URL/DOI -->
+      <a href="https://zenodo.org/" target="_blank" rel="noopener">Zenodo</a>
+    </p>
+  </div>
+  <div class="panel" id="legend"><b>Industry type</b><div id="legend-body"></div></div>
+  <div class="time-badge" id="badge-left">1865–75</div>
+  <div class="time-badge" id="badge-right">1893–95</div>
+
+<script>
+/* --------------------------- Basemaps --------------------------- */
+/* Live preview gallery of every option: https://leaflet-extras.github.io/leaflet-providers/preview/ */
+
+// Carto Positron — clean modern minimal (current default)
+const positron = L.tileLayer(
+  'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',
+  { maxZoom: 19, attribution:
+    '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
+  });
+
+// Carto Positron, NO place labels — most minimal option
+const positronNoLabels = L.tileLayer(
+  'https://{s}.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}{r}.png',
+  { maxZoom: 19, attribution:
+    '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
+  });
+
+/* ---- Stadia Maps basemaps ------------------------------------
+   Works on localhost without a key. For deployment (GitHub Pages),
+   sign up for a free key at https://client.stadiamaps.com/ and paste
+   it into STADIA_KEY below. Until then these layers will 401 off-localhost. */
+const STADIA_KEY = '';  // TODO: paste your Stadia Maps API key here
+const stadiaQS = STADIA_KEY ? `?api_key=${STADIA_KEY}` : '';
+const stadiaAttr =
+  '&copy; <a href="https://stadiamaps.com/" target="_blank">Stadia Maps</a> ' +
+  '&copy; <a href="https://stamen.com" target="_blank">Stamen Design</a> ' +
+  '&copy; <a href="https://openmaptiles.org/" target="_blank">OpenMapTiles</a> ' +
+  '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank">OpenStreetMap</a> contributors';
+
+// Stadia Alidade Smooth — clean, Positron-like (but with labels; no no-labels variant)
+const stadiaAlidade = L.tileLayer(
+  `https://tiles.stadiamaps.com/tiles/alidade_smooth/{z}/{x}/{y}{r}.png${stadiaQS}`,
+  { maxZoom: 20, attribution: stadiaAttr });
+
+// Stadia Stamen Toner Background — B&W, no labels, high contrast coastline/streets
+const stadiaTonerBg = L.tileLayer(
+  `https://tiles.stadiamaps.com/tiles/stamen_toner_background/{z}/{x}/{y}{r}.png${stadiaQS}`,
+  { maxZoom: 18, attribution: stadiaAttr });
+
+// Stadia Stamen Terrain Background — the classic "elevation" look, no labels
+const stadiaTerrainBg = L.tileLayer(
+  `https://tiles.stadiamaps.com/tiles/stamen_terrain_background/{z}/{x}/{y}{r}.png${stadiaQS}`,
+  { maxZoom: 18, attribution: stadiaAttr });
+
+// Esri World Physical — natural physical map: brown/green elevation shading, no streets/labels.
+// Native data only goes to z8, so we stretch to z19 (blurry when deeply zoomed but keeps tiles).
+const esriPhysical = L.tileLayer(
+  'https://server.arcgisonline.com/ArcGIS/rest/services/World_Physical_Map/MapServer/tile/{z}/{y}/{x}',
+  { maxZoom: 19, maxNativeZoom: 8,
+    attribution: 'Tiles &copy; Esri &mdash; Source: US National Park Service'
+  });
+
+// Esri World Terrain Base — grayscale hillshade with subtle tan landcover, very minimal.
+const esriTerrain = L.tileLayer(
+  'https://server.arcgisonline.com/ArcGIS/rest/services/World_Terrain_Base/MapServer/tile/{z}/{y}/{x}',
+  { maxZoom: 19, maxNativeZoom: 13,
+    attribution: 'Tiles &copy; Esri &mdash; Source: USGS, Esri, TANA, DeLorme, NPS'
+  });
+
+// Esri World Shaded Relief — pure grayscale hillshade only. Most "just elevation" option.
+const esriShadedRelief = L.tileLayer(
+  'https://server.arcgisonline.com/ArcGIS/rest/services/World_Shaded_Relief/MapServer/tile/{z}/{y}/{x}',
+  { maxZoom: 19, maxNativeZoom: 13,
+    attribution: 'Tiles &copy; Esri &mdash; Source: Esri'
+  });
+
+// OpenTopoMap — colored topographic with contours + roads. Busiest of the "terrain" options.
+const openTopo = L.tileLayer(
+  'https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png',
+  { maxZoom: 17, subdomains: 'abc',
+    attribution: 'Map data: &copy; <a href="https://www.openstreetmap.org/copyright">OSM</a>, SRTM | Rendering: &copy; <a href="https://opentopomap.org">OpenTopoMap</a>'
+  });
+
+const osm = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  maxZoom: 19,
+  attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+});
+
+// NLS OS One-Inch 2nd edition tiles (c.1895-1899) — period match for the 1893–95 layers.
+const nlsHistorical = L.tileLayer(
+  'https://mapseries-tilesets.s3.amazonaws.com/1inch_2nd_ed/{z}/{x}/{y}.png',
+  { maxZoom: 15, minZoom: 5,
+    attribution: 'OS 1-inch 2nd ed. (c.1895) &copy; <a href="https://maps.nls.uk/">National Library of Scotland</a>'
+  });
+
+/* --------------------------- Map ------------------------------ */
+const map = L.map('map', {
+  center: [51.505, -0.08],
+  zoom: 12,
+  layers: [positron],
+  preferCanvas: false,
+  zoomControl: false,
+});
+L.control.zoom({ position: 'bottomleft' }).addTo(map);
+
+L.control.layers(
+  {
+    'CartoDB Positron':   positron,
+    'Esri Shaded Relief': esriShadedRelief,
+    'Minimal (no labels)':positronNoLabels,
+    'NLS 1890s OS Map':   nlsHistorical,
+  },
+  null,
+  { position: 'bottomright', collapsed: false }
+).addTo(map);
+
+/* ----------- Dedicated panes for swipe clipping ---------------- */
+// Each side gets its own pane + SVG renderer so we can clip with CSS.
+map.createPane('leftPane');
+map.createPane('rightPane');
+map.getPane('leftPane').style.zIndex  = 400;
+map.getPane('rightPane').style.zIndex = 400;
+const leftRenderer  = L.svg({ pane: 'leftPane' });
+const rightRenderer = L.svg({ pane: 'rightPane' });
+
+/* --------------------- Industry type palette ------------------- */
+const TYPE_COLORS = {
+  'Brewing':                  '#b15928',
+  'Distillery':               '#d19144',
+  'Chemical':                 '#6a3d9a',
+  'Varnish Colour and Paint': '#9b6fb0',
+  'Tar':                      '#3d2a5a',
+  'Asphalt':                  '#555555',
+  'Oil and Petroleum':        '#b2df8a',
+  'Soap Candle Tallow and Oil':'#33a02c',
+  'Coal Gas':                 '#d4b100',   /* mustard */
+  'Electrical':               '#f768a1',   /* magenta */
+  'Metal':                    '#e31a1c',
+  'Engineering':              '#fb9a99',
+  'Arms and Munitions':       '#ff3d00',
+  'Shipyard':                 '#67001f',   /* deep wine (maritime heavy) */
+  'Timber Mill':              '#8c510a',
+  'Timber Yard':              '#bf812d',
+  'Cooperage':                '#dfc27d',
+  'Grain Mill':               '#ffdd66',
+  'Granary':                  '#e6c200',
+  'Food':                     '#ff7f00',
+  'Tobacco':                  '#9e0142',
+  'Leather and Skins':        '#7f4a1f',
+  'Cloth and Clothing':       '#fdbf6f',
+  'Fiber':                    '#f4a582',
+  'Rope':                     '#c49a6c',
+  'Rubber and Gutta-Percha':  '#cc4c02',   /* rust */
+  'Paper':                    '#cab2d6',
+  'Printing':                 '#6b6b6b',
+  'Glass':                    '#f1b6da',   /* pale rose */
+  'Furnishings':              '#bc8f8f',
+  'Building':                 '#a0522d',
+  'General':                  '#999999',
+  'Error':                    '#000000',
+};
+const DEFAULT_COLOR = '#777777';
+const colorFor = (t) => TYPE_COLORS[t] || DEFAULT_COLOR;
+
+/* --------------------- Helpers -------------------------------- */
+function industryPopup(p) {
+  const name = p.Map_Name || p.Full_name || p.Short_name || '(unnamed)';
+  const link = p.Web_Link ? `<br><a href="${p.Web_Link}" target="_blank" rel="noopener">More info</a>` : '';
+  return `
+    <b>${name}</b><br>
+    <b>Type:</b> ${p.Type || '—'}
+    ${p.Products ? `<br><b>Products:</b> ${p.Products}` : ''}
+    ${link}`;
+}
+function dockPopup(p) {
+  return `<b>${p.Name || 'Dock'}</b>`;
+}
+function waterPopup(p) {
+  return `<b>${p.Name || p.Type || 'Water'}</b>`;
+}
+
+const industryStyle = (feat) => ({
+  color: '#222', weight: 0.6,
+  fillColor: colorFor(feat.properties.Type),
+  fillOpacity: 0.85,
+});
+const waterStyle    = { color: '#3182bd', weight: 0.4, fillColor: '#6baed6', fillOpacity: 0.6 };
+const dockStyle     = { color: '#08306b', weight: 0.8, fillColor: '#2171b5', fillOpacity: 0.75 };
+const boundaryStyle = { color: '#555',    weight: 1.2, fill: false, dashArray: '4 3' };
+const lccStyle      = { color: '#b22222', weight: 2,   fill: false };
+
+/* --------------------- Load layers ---------------------------- */
+async function loadJSON(path) {
+  const r = await fetch(path);
+  if (!r.ok) throw new Error(`${path}: ${r.status}`);
+  return r.json();
+}
+
+function addToPane(data, opts, pane, renderer) {
+  return L.geoJSON(data, { ...opts, pane, renderer }).addTo(map);
+}
+
+Promise.all([
+  loadJSON('data/Industry_1865-75.geojson'),
+  loadJSON('data/Industry_1893-95.geojson'),
+  loadJSON('data/Water_First_Series.geojson'),
+  loadJSON('data/Water_1895.geojson'),
+  loadJSON('data/Docks.geojson'),
+  loadJSON('data/TQ_TidalWater.geojson'),
+  loadJSON('data/Lower_River_Lea.geojson'),
+  loadJSON('data/LCC_Border.geojson'),
+  loadJSON('data/CityOfLondon.geojson'),
+]).then(([indEarly, indLate, watEarly, watLate, docks,
+          tidal, lea, lcc, cityLondon]) => {
+
+  // Split docks by which map series they appear on.
+  const docksEarly = {
+    type: 'FeatureCollection',
+    features: docks.features.filter(f => f.properties.London1stSeries == 1),
+  };
+  const docksLate = {
+    type: 'FeatureCollection',
+    features: docks.features.filter(f => f.properties.London1stRevision == 1),
+  };
+
+  // LEFT side (1865-75) → leftPane
+  addToPane(watEarly,  { style: waterStyle,
+      onEachFeature: (f, l) => l.bindPopup(waterPopup(f.properties)) }, 'leftPane',  leftRenderer);
+  addToPane(docksEarly, { style: dockStyle,
+      onEachFeature: (f, l) => l.bindPopup(dockPopup(f.properties)) }, 'leftPane',  leftRenderer);
+  addToPane(indEarly,  { style: industryStyle,
+      onEachFeature: (f, l) => l.bindPopup(industryPopup(f.properties)) }, 'leftPane',  leftRenderer);
+
+  // RIGHT side (1893-95) → rightPane
+  addToPane(watLate,   { style: waterStyle,
+      onEachFeature: (f, l) => l.bindPopup(waterPopup(f.properties)) }, 'rightPane', rightRenderer);
+  addToPane(docksLate, { style: dockStyle,
+      onEachFeature: (f, l) => l.bindPopup(dockPopup(f.properties)) }, 'rightPane', rightRenderer);
+  addToPane(indLate,   { style: industryStyle,
+      onEachFeature: (f, l) => l.bindPopup(industryPopup(f.properties)) }, 'rightPane', rightRenderer);
+
+  // Shared context layers (default overlay pane — not clipped)
+  L.geoJSON(tidal,     { style: waterStyle,    interactive: false }).addTo(map);
+  L.geoJSON(lea,       { style: waterStyle,    interactive: false }).addTo(map);
+  L.geoJSON(lcc,       { style: lccStyle,      interactive: false }).addTo(map);
+  L.geoJSON(cityLondon,{ style: boundaryStyle, interactive: false }).addTo(map);
+
+  // Fit to combined industry extent
+  const bounds = L.geoJSON(indEarly).getBounds()
+                   .extend(L.geoJSON(indLate).getBounds());
+  map.fitBounds(bounds, { padding: [20, 20] });
+
+  // ---- Build legend -----------------------------------------
+  const typesPresent = new Set();
+  for (const f of indEarly.features) typesPresent.add(f.properties.Type);
+  for (const f of indLate.features)  typesPresent.add(f.properties.Type);
+  const body = document.getElementById('legend-body');
+  const ordered = Object.keys(TYPE_COLORS).filter(t => typesPresent.has(t));
+  for (const t of typesPresent) if (!ordered.includes(t)) ordered.push(t);
+  for (const t of ordered) {
+    const row = document.createElement('div');
+    row.className = 'row';
+    row.innerHTML = `<span class="sw" style="background:${colorFor(t)}"></span>${t || '(none)'}`;
+    body.appendChild(row);
+  }
+  body.insertAdjacentHTML('beforeend', `
+    <div class="side-label">Other</div>
+    <div class="row"><span class="sw" style="background:#2171b5"></span>Docks</div>
+    <div class="row"><span class="sw" style="background:#6baed6"></span>Water bodies</div>
+    <div class="row"><span class="sw" style="background:#fff;border:2px solid #b22222"></span>London County Council</div>
+    <div class="row"><span class="sw" style="background:#fff;border:1px dashed #555"></span>City of London</div>
+  `);
+
+  // ---- Swipe divider ----------------------------------------
+  const mapContainer = map.getContainer();
+  const divider = document.createElement('div');
+  divider.className = 'sbs-divider';
+  mapContainer.appendChild(divider);
+
+  let splitFrac = 0.5;
+  const leftPaneEl  = map.getPane('leftPane');
+  const rightPaneEl = map.getPane('rightPane');
+
+  // Clip the SVG element inside each pane (it has well-defined dims and position).
+  // CSS clip-path on the pane div itself is unreliable because Leaflet panes
+  // are zero-sized position:absolute containers.
+  function applyClip() {
+    const mapRect = mapContainer.getBoundingClientRect();
+    const dividerPx = Math.round(mapRect.width * splitFrac); // viewport pixels
+    divider.style.left = dividerPx + 'px';
+
+    for (const [paneEl, isLeft] of [[leftPaneEl, true], [rightPaneEl, false]]) {
+      const svg = paneEl.querySelector('svg');
+      if (!svg) continue;
+      const svgRect = svg.getBoundingClientRect();
+      const svgLeftInVp  = svgRect.left  - mapRect.left;
+      const svgRightInVp = svgRect.right - mapRect.left;
+      if (isLeft) {
+        // Show SVG content from its left edge to the divider
+        const insetRight = Math.max(0, svgRightInVp - dividerPx);
+        svg.style.clipPath = `inset(0 ${insetRight}px 0 0)`;
+      } else {
+        // Show SVG content from the divider to its right edge
+        const insetLeft = Math.max(0, dividerPx - svgLeftInVp);
+        svg.style.clipPath = `inset(0 0 0 ${insetLeft}px)`;
+      }
+    }
+  }
+  applyClip();
+  // 'move' fires during pan; 'zoomend'/'moveend' after transform finishes.
+  map.on('move moveend zoom zoomend viewreset resize', applyClip);
+
+  // Drag the divider
+  let dragging = false;
+  const onDown = (e) => {
+    dragging = true;
+    map.dragging.disable();
+    e.preventDefault();
+  };
+  const onMove = (e) => {
+    if (!dragging) return;
+    const rect = mapContainer.getBoundingClientRect();
+    const clientX = (e.touches ? e.touches[0].clientX : e.clientX);
+    splitFrac = Math.min(1, Math.max(0, (clientX - rect.left) / rect.width));
+    applyClip();
+  };
+  const onUp = () => { dragging = false; map.dragging.enable(); };
+
+  divider.addEventListener('mousedown', onDown);
+  divider.addEventListener('touchstart', onDown, { passive: false });
+  window.addEventListener('mousemove', onMove);
+  window.addEventListener('touchmove', onMove, { passive: false });
+  window.addEventListener('mouseup', onUp);
+  window.addEventListener('touchend', onUp);
+
+}).catch(err => {
+  console.error(err);
+  document.getElementById('info').innerHTML =
+    `<b>Failed to load map data:</b><br>${err.message}`;
+});
+</script>
+</body>
+</html>
