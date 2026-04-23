@@ -26,9 +26,24 @@
       z-index: 500;
       max-width: 280px;
     }
-    .panel h1 { margin: 0 0 4px; font-size: 15px; }
+    .panel h1 { margin: 0; font-size: 15px; display: inline; }
     .panel p  { margin: 4px 0; }
     .panel a  { color: #0366d6; }
+    .panel summary {
+      cursor: pointer;
+      outline: none;
+      list-style: none;
+      padding: 0;
+    }
+    .panel summary::-webkit-details-marker { display: none; }
+    .panel summary::marker { display: none; }
+    .panel summary::after {
+      content: ' ▾';
+      color: #888;
+      font-size: 11px;
+    }
+    .panel:not([open]) summary::after { content: ' ▸'; }
+    .panel[open] > :not(summary) { margin-top: 6px; }
     .credits {
       font-size: 11px; color: #444;
       border-top: 1px solid #ddd; padding-top: 6px; margin-top: 8px;
@@ -43,17 +58,6 @@
     #legend .sw {
       width: 14px; height: 14px; margin-right: 6px; border: 1px solid #333;
     }
-
-    /* Side indicators */
-    .time-badge {
-      position: absolute; top: 80px;
-      background: rgba(0,0,0,0.7); color: white;
-      padding: 6px 12px; border-radius: 4px;
-      font-size: 12px; font-weight: 600; letter-spacing: 0.08em;
-      z-index: 400; pointer-events: none;
-    }
-    #badge-left  { left: 14px; }
-    #badge-right { right: 14px; }
 
     /* Swipe divider */
     .sbs-divider {
@@ -84,17 +88,48 @@
       font-size: 20px; color: #222; font-weight: bold;
       pointer-events: none;
     }
+    /* Date labels that travel with the divider handle */
+    .sbs-label {
+      position: absolute;
+      top: 50%;
+      transform: translateY(-50%);
+      background: rgba(0,0,0,0.85);
+      color: #fff;
+      padding: 5px 10px;
+      border-radius: 3px;
+      font-size: 12px;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+      white-space: nowrap;
+      pointer-events: none;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.3);
+    }
+    .sbs-label-left  { right: 28px; }   /* sits just left of the handle */
+    .sbs-label-right { left:  28px; }   /* sits just right of the handle */
 
     .leaflet-popup-content { font-size: 13px; line-height: 1.4; }
     .leaflet-popup-content b { color: #222; }
+
+    /* Mobile: shrink panels and hide the label text next to the divider
+       (the handle itself still indicates the swipe). */
+    @media (max-width: 640px) {
+      .panel {
+        max-width: 180px;
+        font-size: 12px;
+        padding: 6px 10px;
+      }
+      .panel h1 { font-size: 13px; }
+      #legend { max-height: 50vh; }
+      .sbs-label { display: none; }
+    }
   </style>
 </head>
 <body>
   <div id="map"></div>
-  <div class="panel" id="info">
-    <h1>London's 19th Century Industrial Geography</h1>
+  <details class="panel" id="info" open>
+    <summary><h1>London's 19th Century Industrial Geography</h1></summary>
     <p>Drag the handle to compare industry, water, and docks
-       in London <b>c.1865–75</b> vs. <b>c.1893–95</b>.</p>
+       in London <b>c.1865–75</b> (left) vs. <b>c.1893–95</b> (right).</p>
     <p style="font-size: 11px; color: #666;">
       Data: first-series Ordnance Survey (1860s–70s) &amp; 1890s revision.
       Click any feature for details.
@@ -106,10 +141,11 @@
       <!-- TODO: replace the href below with the specific Zenodo record URL/DOI -->
       <a href="https://zenodo.org/" target="_blank" rel="noopener">Zenodo</a>
     </p>
-  </div>
-  <div class="panel" id="legend"><b>Industry type</b><div id="legend-body"></div></div>
-  <div class="time-badge" id="badge-left">1865–75</div>
-  <div class="time-badge" id="badge-right">1893–95</div>
+  </details>
+  <details class="panel" id="legend" open>
+    <summary><b>Industry type</b></summary>
+    <div id="legend-body"></div>
+  </details>
 
 <script>
 /* --------------------------- Basemaps --------------------------- */
@@ -354,6 +390,11 @@ Promise.all([
                    .extend(L.geoJSON(indLate).getBounds());
   map.fitBounds(bounds, { padding: [20, 20] });
 
+  // ---- Collapse info/legend panels on small screens --------
+  if (window.matchMedia('(max-width: 640px)').matches) {
+    document.querySelectorAll('details.panel').forEach(d => d.removeAttribute('open'));
+  }
+
   // ---- Build legend -----------------------------------------
   const typesPresent = new Set();
   for (const f of indEarly.features) typesPresent.add(f.properties.Type);
@@ -379,6 +420,9 @@ Promise.all([
   const mapContainer = map.getContainer();
   const divider = document.createElement('div');
   divider.className = 'sbs-divider';
+  divider.innerHTML =
+    '<div class="sbs-label sbs-label-left">c.1865–75</div>' +
+    '<div class="sbs-label sbs-label-right">c.1893–95</div>';
   mapContainer.appendChild(divider);
 
   let splitFrac = 0.5;
