@@ -329,6 +329,23 @@ const dockStyle     = { color: '#08306b', weight: 0.8, fillColor: '#2171b5', fil
 const boundaryStyle = { color: '#555',    weight: 1.2, fill: false, dashArray: '4 3' };
 const lccStyle      = { color: '#b22222', weight: 2,   fill: false };
 
+// Rail styling — dashed black for surface rail; lighter dashes for subway/tram.
+function railStyle(feature) {
+  const p = feature.properties || {};
+  const isUnderground = p.kind === 'subway';
+  return {
+    color: isUnderground ? '#555' : '#222',
+    weight: 1.4,
+    opacity: 0.85,
+    dashArray: isUnderground ? '2,4' : '4,2',
+  };
+}
+function railPopup(p) {
+  const parts = [p.name || 'Railway'];
+  if (p.kind) parts.push(`<span style="color:#666;font-size:11px">${p.kind}</span>`);
+  return parts.join('<br>');
+}
+
 /* --------------------- Load layers ---------------------------- */
 async function loadJSON(path) {
   const r = await fetch(path);
@@ -350,8 +367,10 @@ Promise.all([
   loadJSON('data/Lower_River_Lea.geojson'),
   loadJSON('data/LCC_Border.geojson'),
   loadJSON('data/CityOfLondon.geojson'),
+  loadJSON('data/Rail_1870.geojson'),
+  loadJSON('data/Rail_1895.geojson'),
 ]).then(([indEarly, indLate, watEarly, watLate, docks,
-          tidal, lea, lcc, cityLondon]) => {
+          tidal, lea, lcc, cityLondon, railEarly, railLate]) => {
 
   // Split docks by which map series they appear on.
   const docksEarly = {
@@ -370,6 +389,9 @@ Promise.all([
   //   Dragging the handle RIGHT grows the leftPane into view — so
   //   leftPane holds the LATE (1893-95) layers, labelled on the
   //   RIGHT of the handle ("c.1893-95 →").
+  // Rail first so industry polygons draw on top.
+  addToPane(railLate, { style: railStyle,
+      onEachFeature: (f, l) => l.bindPopup(railPopup(f.properties)) }, 'leftPane',  leftRenderer);
   addToPane(indLate,   { style: industryStyle,
       onEachFeature: (f, l) => l.bindPopup(industryPopup(f.properties)) }, 'leftPane',  leftRenderer);
   addToPane(docksLate, { style: dockStyle,
@@ -377,6 +399,8 @@ Promise.all([
   addToPane(watLate,   { style: waterStyle,
       onEachFeature: (f, l) => l.bindPopup(waterPopup(f.properties)) }, 'leftPane',  leftRenderer);
 
+  addToPane(railEarly, { style: railStyle,
+      onEachFeature: (f, l) => l.bindPopup(railPopup(f.properties)) }, 'rightPane', rightRenderer);
   addToPane(indEarly,  { style: industryStyle,
       onEachFeature: (f, l) => l.bindPopup(industryPopup(f.properties)) }, 'rightPane', rightRenderer);
   addToPane(docksEarly, { style: dockStyle,
@@ -417,6 +441,7 @@ Promise.all([
     <div class="side-label">Other</div>
     <div class="row"><span class="sw" style="background:#2171b5"></span>Docks</div>
     <div class="row"><span class="sw" style="background:#6baed6"></span>Water bodies</div>
+    <div class="row"><span class="sw" style="background:repeating-linear-gradient(90deg,#222 0 4px,transparent 4px 6px)"></span>Railways <span style="color:#888;font-size:11px">(OHM)</span></div>
     <div class="row"><span class="sw" style="background:#fff;border:2px solid #b22222"></span>London County Council</div>
     <div class="row"><span class="sw" style="background:#fff;border:1px dashed #555"></span>City of London</div>
   `);
