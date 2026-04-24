@@ -128,8 +128,8 @@
   <div id="map"></div>
   <details class="panel" id="info" open>
     <summary><h1>London's 19th Century Industrial Geography</h1></summary>
-    <p>Drag the handle to compare industry, water, and docks
-       in London <b>c.1865–75</b> (left) vs. <b>c.1893–95</b> (right).</p>
+    <p>Drag the handle left to reveal <b>c.1865–75</b>; drag it right
+       to reveal <b>c.1893–95</b>.</p>
     <p style="font-size: 11px; color: #666;">
       Data: first-series Ordnance Survey (1860s–70s) &amp; 1890s revision.
       Click any feature for details.
@@ -363,21 +363,26 @@ Promise.all([
     features: docks.features.filter(f => f.properties.London1stRevision == 1),
   };
 
-  // LEFT side (1865-75) → leftPane
-  addToPane(watEarly,  { style: waterStyle,
-      onEachFeature: (f, l) => l.bindPopup(waterPopup(f.properties)) }, 'leftPane',  leftRenderer);
-  addToPane(docksEarly, { style: dockStyle,
-      onEachFeature: (f, l) => l.bindPopup(dockPopup(f.properties)) }, 'leftPane',  leftRenderer);
-  addToPane(indEarly,  { style: industryStyle,
-      onEachFeature: (f, l) => l.bindPopup(industryPopup(f.properties)) }, 'leftPane',  leftRenderer);
-
-  // RIGHT side (1893-95) → rightPane
-  addToPane(watLate,   { style: waterStyle,
-      onEachFeature: (f, l) => l.bindPopup(waterPopup(f.properties)) }, 'rightPane', rightRenderer);
-  addToPane(docksLate, { style: dockStyle,
-      onEachFeature: (f, l) => l.bindPopup(dockPopup(f.properties)) }, 'rightPane', rightRenderer);
+  // Reveal-direction semantics:
+  //   Dragging the handle LEFT grows the rightPane into view — so
+  //   rightPane holds the EARLY (1865-75) layers, labelled on the
+  //   LEFT of the handle ("← c.1865-75").
+  //   Dragging the handle RIGHT grows the leftPane into view — so
+  //   leftPane holds the LATE (1893-95) layers, labelled on the
+  //   RIGHT of the handle ("c.1893-95 →").
   addToPane(indLate,   { style: industryStyle,
+      onEachFeature: (f, l) => l.bindPopup(industryPopup(f.properties)) }, 'leftPane',  leftRenderer);
+  addToPane(docksLate, { style: dockStyle,
+      onEachFeature: (f, l) => l.bindPopup(dockPopup(f.properties)) }, 'leftPane',  leftRenderer);
+  addToPane(watLate,   { style: waterStyle,
+      onEachFeature: (f, l) => l.bindPopup(waterPopup(f.properties)) }, 'leftPane',  leftRenderer);
+
+  addToPane(indEarly,  { style: industryStyle,
       onEachFeature: (f, l) => l.bindPopup(industryPopup(f.properties)) }, 'rightPane', rightRenderer);
+  addToPane(docksEarly, { style: dockStyle,
+      onEachFeature: (f, l) => l.bindPopup(dockPopup(f.properties)) }, 'rightPane', rightRenderer);
+  addToPane(watEarly,  { style: waterStyle,
+      onEachFeature: (f, l) => l.bindPopup(waterPopup(f.properties)) }, 'rightPane', rightRenderer);
 
   // Shared context layers (default overlay pane — not clipped)
   L.geoJSON(tidal,     { style: waterStyle,    interactive: false }).addTo(map);
@@ -421,8 +426,8 @@ Promise.all([
   const divider = document.createElement('div');
   divider.className = 'sbs-divider';
   divider.innerHTML =
-    '<div class="sbs-label sbs-label-left">c.1865–75</div>' +
-    '<div class="sbs-label sbs-label-right">c.1893–95</div>';
+    '<div class="sbs-label sbs-label-left">← c.1865–75</div>' +
+    '<div class="sbs-label sbs-label-right">c.1893–95 →</div>';
   mapContainer.appendChild(divider);
 
   let splitFrac = 0.5;
